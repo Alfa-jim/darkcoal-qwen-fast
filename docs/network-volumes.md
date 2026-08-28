@@ -40,7 +40,9 @@ Models must be placed in the following structure on your network volume:
     ├── embeddings/       # Textual inversion embeddings (.safetensors, .pt)
     ├── upscale_models/   # Upscaling models (.safetensors, .pt)
     ├── unet/             # UNet models
-    └── configs/          # Model configs (.yaml, .json)
+    ├── configs/          # Model configs (.yaml, .json)
+    ├── text_encoders/    # GGUF text encoders — Qwen VL etc. (.gguf)
+    └── diffusion_models/ # GGUF UNet/DiT — qwen-image-edit etc. (.gguf)
 ```
 
 > **Note**
@@ -51,15 +53,17 @@ Models must be placed in the following structure on your network volume:
 
 ComfyUI only recognizes files with specific extensions when scanning model directories.
 
-| Model Type     | Supported Extensions                        |
-| -------------- | ------------------------------------------- |
-| Checkpoints    | `.safetensors`, `.ckpt`, `.pt`, `.pth`, `.bin` |
-| LoRAs          | `.safetensors`, `.pt`                       |
-| VAE            | `.safetensors`, `.pt`, `.bin`               |
-| CLIP           | `.safetensors`, `.pt`, `.bin`               |
-| ControlNet     | `.safetensors`, `.pt`, `.pth`, `.bin`       |
-| Embeddings     | `.safetensors`, `.pt`, `.bin`               |
-| Upscale Models | `.safetensors`, `.pt`, `.pth`               |
+| Model Type       | Supported Extensions                        |
+| ---------------- | ------------------------------------------- |
+| Checkpoints      | `.safetensors`, `.ckpt`, `.pt`, `.pth`, `.bin` |
+| LoRAs            | `.safetensors`, `.pt`                       |
+| VAE              | `.safetensors`, `.pt`, `.bin`               |
+| CLIP             | `.safetensors`, `.pt`, `.bin`               |
+| ControlNet       | `.safetensors`, `.pt`, `.pth`, `.bin`       |
+| Embeddings       | `.safetensors`, `.pt`, `.bin`               |
+| Upscale Models   | `.safetensors`, `.pt`, `.pth`               |
+| Text Encoders    | `.gguf`, `.safetensors`, `.bin`             |
+| Diffusion Models | `.gguf`, `.safetensors`, `.bin`             |
 
 Files with other extensions (for example `.txt`, `.zip`) are **ignored** by ComfyUI’s model discovery.
 
