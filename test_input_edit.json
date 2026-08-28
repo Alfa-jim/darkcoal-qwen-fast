@@ -1,0 +1,18 @@
+{
+  "input": {
+    "images": [{ "name": "reference.png", "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAMklEQVR4nGI5ZdXAQEvARFPTRy0YtWDUglELRi0YtWDUAioCQAAAAP//E24Bx3jUKuYAAAAASUVORK5CYII=" }],
+    "workflow": {
+      "10": { "inputs": { "vae_name": "qwen_image_vae.safetensors" }, "class_type": "VAELoader" },
+      "12": { "inputs": { "unet_name": "qwen-image-edit-2511-uncensored-Q6_K.gguf" }, "class_type": "UnetLoaderGGUF" },
+      "61": { "inputs": { "clip_name": "Qwen2.5-VL-7B-Instruct-q4_0.gguf", "type": "qwen_image", "device": "default" }, "class_type": "CLIPLoaderGGUF" },
+      "41": { "inputs": { "image": "reference.png" }, "class_type": "LoadImage" },
+      "27": { "inputs": { "width": 1024, "height": 1024, "batch_size": 1 }, "class_type": "EmptySD3LatentImage" },
+      "66": { "inputs": { "shift": 3.1, "model": ["12", 0] }, "class_type": "ModelSamplingAuraFlow" },
+      "68": { "inputs": { "prompt": "keep the same girl, same face and outfit, but now she is on a beach at sunset, anime style, highly detailed, nsfw uncensored", "clip": ["61", 0], "vae": ["10", 0], "image": ["41", 0] }, "class_type": "TextEncodeQwenImageEdit" },
+      "69": { "inputs": { "text": "", "clip": ["61", 0] }, "class_type": "CLIPTextEncode" },
+      "31": { "inputs": { "seed": 42, "steps": 20, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0, "model": ["66", 0], "positive": ["68", 0], "negative": ["69", 0], "latent_image": ["27", 0] }, "class_type": "KSampler" },
+      "8": { "inputs": { "samples": ["31", 0], "vae": ["10", 0] }, "class_type": "VAEDecode" },
+      "9": { "inputs": { "filename_prefix": "ComfyUI", "images": ["8", 0] }, "class_type": "SaveImage" }
+    }
+  }
+}
