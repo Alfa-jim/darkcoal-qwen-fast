@@ -19,6 +19,9 @@ MODEL_TYPES = {
     "upscale_models": [".safetensors", ".pt", ".pth"],
     "vae": [".safetensors", ".pt", ".bin"],
     "unet": [".safetensors", ".pt", ".bin"],
+    # GGUF — darkcoal-qwen-fast uses these on the network volume
+    "text_encoders": [".gguf", ".safetensors", ".bin"],
+    "diffusion_models": [".gguf", ".safetensors", ".bin"],
 }
 
 
@@ -134,13 +137,15 @@ def print_expected_structure():
     print("\n    Expected directory structure:")
     print("    /runpod-volume/")
     print("    └── models/")
-    print("        ├── checkpoints/    <- Put your .safetensors/.ckpt models here")
-    print("        ├── loras/          <- Put your LoRA files here")
-    print("        ├── vae/            <- Put your VAE files here")
-    print("        ├── clip/           <- Put your CLIP models here")
-    print("        ├── controlnet/     <- Put your ControlNet models here")
-    print("        ├── embeddings/     <- Put your embedding files here")
-    print("        └── upscale_models/ <- Put your upscale models here")
+    print("        ├── checkpoints/      <- .safetensors/.ckpt")
+    print("        ├── loras/             <- .safetensors")
+    print("        ├── vae/               <- .safetensors")
+    print("        ├── clip/              <- .safetensors")
+    print("        ├── controlnet/        <- .safetensors")
+    print("        ├── embeddings/        <- embeddings")
+    print("        ├── upscale_models/    <- upscale")
+    print("        ├── text_encoders/     <- .gguf (Qwen VL, CLIP GGUF)")
+    print("        └── diffusion_models/  <- .gguf (UNet/DiT GGUF)")
 
 
 def format_size(size_bytes):
