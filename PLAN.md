@@ -24,7 +24,7 @@ You asked for a "just copy-paste / just push" plan. This is it. Two separate tas
 1. Open **RunPod → Storage → Network Volumes → Create Network Volume**.
 2. Settings:
    - **Name:** `qwen-fast-models`
-   - **Region:** **same region as your endpoint** (if endpoint is `EUR-IS-1`, pick EU; if `US-CA-1`, pick US — volume must be same region as workers or it won't attach).
+   - **Region:** **CA** (your workers are in California → pick the **CA / US-CA** option; that's US West. The volume **must** be in the same region+datacenter family as the endpoint or it won't attach).
    - **Size:** `50 GB` (3 GGUFs 21 GB + VAE/LoRA + headroom).
 3. Click **Create**. Note the **Volume ID** (looks like `a1b2c3...`).
 
