@@ -75,10 +75,18 @@ Files with other extensions (for example `.txt`, `.zip`) are **ignored** by Comf
   - Files named without one of the supported extensions are skipped.
 - **Empty directories**
   - No actual model files present in `models/checkpoints` (or other folders).
-- **Volume not attached**
+- **Volume not attached** ← the #1 cause of `unet_name: '...gguf' not in []` / `clip_name not in []`
   - Endpoint created without selecting a network volume under **Advanced → Select Network Volume**.
+  - When this happens the GGUF loaders (`UnetLoaderGGUF`, `CLIPLoaderGGUF`) report **empty lists** (`not in []`) and validation 400s every request.
+  - Look for `worker-comfyui: FATAL — /runpod-volume does not exist` in startup logs — that means the volume is truly not mounted.
+  - Fix: **RunPod Console → Serverless → your endpoint → Manage → Edit → Advanced → Network Volume → select `qwen-fast-models` → Save**. Must be in the **same region** as the endpoint (CA/US-CA for this worker). Then scale workers to 0 and send a new request.
+- **Volume attached but folder still empty / scanned as `found 0 files`**
+  - The volume WAS populated via a Pod, but the Pod's volume was mounted at `/workspace` while this worker reads `/runpod-volume` — both point to the same data, so population script must use `/runpod-volume/models/...` regardless of mount hint.
+  - Or population was interrupted (curl without `-C -` left a `.gguf` truncated to 0 B) — re-run the PLAN.md §3 populate block with `curl -L -C -`.
+- **ComfyUI-Manager offline gotcha**
+  - `src/start.sh` forces `comfy-manager-set-mode offline`. Installing GGUF nodes via Manager UI at runtime won't persist — they must be baked (Dockerfile's `ComfyUI-GGUF` step).
 
-If any of the above is true, ComfyUI will silently fail to discover models from the network volume.
+If any of the above is true, ComfyUI will silently fail to discover models from the network volume and `/prompt` will 400 with `prompt_outputs_failed_validation`.
 
 ## Debugging with `NETWORK_VOLUME_DEBUG`
 

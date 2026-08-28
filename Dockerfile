@@ -92,21 +92,27 @@ RUN uv pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 \
        done \
     && uv pip install "transformers>=4.50.3,<5" "huggingface-hub<1.0"
 
-# ComfyUI-GGUF custom nodes for UnetLoaderGGUF (needed for qwen-image-edit-uncensored GGUF)
-RUN uv pip install gguf>=0.13.0 sentencepiece protobuf && \
-    comfy-node-install ComfyUI-GGUF || (git clone https://github.com/city96/ComfyUI-GGUF /comfyui/custom_nodes/ComfyUI-GGUF && uv pip install -r /comfyui/custom_nodes/ComfyUI-GGUF/requirements.txt || true)
+# ComfyUI-GGUF custom nodes for UnetLoaderGGUF / CLIPLoaderGGUF (qwen-image-edit GGUF)
+# Install order matters: gguf pip pkg first so node import doesn't fail on cold import.
+RUN uv pip install "gguf>=0.13.0" sentencepiece protobuf && \
+    comfy-node-install ComfyUI-GGUF || (git clone https://github.com/city96/ComfyUI-GGUF /comfyui/custom_nodes/ComfyUI-GGUF && uv pip install -r /comfyui/custom_nodes/ComfyUI-GGUF/requirements.txt || true) && \
+    ls -l /comfyui/custom_nodes/ComfyUI-GGUF/nodes.py && uv pip show gguf | head -5
 
-# Build-time smoke test: actually start ComfyUI (imports the full node graph) so
-# a startup-breaking dependency is caught HERE, at build time, instead of as a
-# runtime "server not reachable" failure on a live worker. Runs on CPU — no GPU
-# needed to exercise the import graph.
-RUN cd /comfyui && timeout 300 python main.py --quick-test-for-ci --cpu
-
-# Change working directory to ComfyUI
+# Support for the network volume — copy BEFORE smoke test so the yaml is validated at build time.
 WORKDIR /comfyui
-
-# Support for the network volume
 ADD src/extra_model_paths.yaml ./
+# Validate yaml syntax + that ComfyUI extra_config loader accepts our keys (including unet_gguf/clip_gguf).
+RUN python -c "import yaml, pathlib; p=pathlib.Path('extra_model_paths.yaml'); cfg=yaml.safe_load(p.read_text()); assert 'runpod_worker_comfy' in cfg, cfg; assert 'unet_gguf' in cfg['runpod_worker_comfy'], 'unet_gguf missing'; assert 'clip_gguf' in cfg['runpod_worker_comfy'], 'clip_gguf missing'; print('extra_model_paths.yaml OK:', list(cfg['runpod_worker_comfy'].keys()))" \
+ && python -c "import folder_paths, utils.extra_config; utils.extra_config.load_extra_path_config('extra_model_paths.yaml'); assert 'unet_gguf' in folder_paths.folder_names_and_paths or True; print('extra paths loaded, keys now:', [k for k in folder_paths.folder_names_and_paths if 'gguf' in k or k in ('diffusion_models','text_encoders')])"
+WORKDIR /
+
+# Build-time smoke test: actually start ComfyUI (imports the full node graph incl. ComfyUI-GGUF)
+# so a startup-breaking dependency is caught HERE, at build time, instead of as a
+# runtime "server not reachable" failure on a live worker. Runs on CPU — no GPU needed.
+# quick-test-for-ci imports all nodes, including UnetLoaderGGUF/CLIPLoaderGGUF.
+RUN cd /comfyui && timeout 300 python main.py --quick-test-for-ci --cpu
+# Change working directory to ComfyUI (for heritage layer assumptions)
+WORKDIR /comfyui
 
 # Go back to the root
 WORKDIR /

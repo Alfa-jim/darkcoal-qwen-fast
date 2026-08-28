@@ -12,3 +12,9 @@ runpod_worker_comfy:
   unet: models/unet/
   text_encoders: models/text_encoders/
   diffusion_models: models/diffusion_models/
+  # Explicit GGUF keys — ComfyUI-GGUF registers these as synthetic aliases
+  # (unet_gguf -> diffusion_models/unet, clip_gguf -> text_encoders/clip)
+  # with a ".gguf"-only extension filter. Without explicit entries the
+  # volume path may miss the .gguf filter if node import order shifts.
+  unet_gguf: models/diffusion_models/
+  clip_gguf: models/text_encoders/

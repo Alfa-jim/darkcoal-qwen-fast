@@ -375,31 +375,76 @@ def upload_images(images):
 
 def get_available_models():
     """
-    Get list of available models from ComfyUI
+    Get list of available models from ComfyUI (checkpoints + GGUF nodes).
 
-    Returns:
-        dict: Dictionary containing available models by type
+    Used in 400 diagnostics so users can see e.g. "unet_name not in []"
+    even without digging through object_info manually.
     """
+    def _extract_list(object_info, node_class, input_name):
+        info = object_info.get(node_class)
+        if not info:
+            return None
+        inp = info.get("input", {})
+        req = inp.get("required", {}) if isinstance(inp, dict) else {}
+        opts = req.get(input_name)
+        if opts and isinstance(opts, list) and len(opts) > 0 and isinstance(opts[0], list):
+            return list(opts[0])
+        return []
+
     try:
         response = requests.get(f"http://{COMFY_HOST}/object_info", timeout=10)
         response.raise_for_status()
         object_info = response.json()
 
-        # Extract available checkpoints from CheckpointLoaderSimple
-        available_models = {}
-        if "CheckpointLoaderSimple" in object_info:
-            checkpoint_info = object_info["CheckpointLoaderSimple"]
-            if "input" in checkpoint_info and "required" in checkpoint_info["input"]:
-                ckpt_options = checkpoint_info["input"]["required"].get("ckpt_name")
-                if ckpt_options and len(ckpt_options) > 0:
-                    available_models["checkpoints"] = (
-                        ckpt_options[0] if isinstance(ckpt_options[0], list) else []
-                    )
+        models: dict = {}
 
-        return available_models
+        # SD checkpoint loader
+        chk = _extract_list(object_info, "CheckpointLoaderSimple", "ckpt_name")
+        if chk is not None:
+            models["checkpoints"] = chk
+
+        # GGUF loaders — these are the ones that show "not in []" when volume is detached
+        for cls, inp in [
+            ("UnetLoaderGGUF", "unet_name"),
+            ("UnetLoaderGGUFAdvanced", "unet_name"),
+            ("CLIPLoaderGGUF", "clip_name"),
+            ("DualCLIPLoaderGGUF", "clip_name1"),
+        ]:
+            lst = _extract_list(object_info, cls, inp)
+            if lst is not None:
+                key = cls.replace("LoaderGGUF", "").replace("Loader", "") + f"::{inp}"
+                # uniq by convention: unet_name / clip_name
+                short = inp if inp not in models else f"{cls}::{inp}"
+                # store both — short for the common single-list case
+                if inp in ("unet_name", "clip_name") and inp not in models:
+                    models[inp] = lst
+                models[short] = lst
+
+        # Raw counts summary so logs tell you about mount without knowing details
+        vae = _extract_list(object_info, "VAELoader", "vae_name")
+        if vae is not None:
+            models["vae_name"] = vae
+
+        return models
     except Exception as e:
         print(f"worker-comfyui - Warning: Could not fetch available models: {e}")
         return {}
+
+
+def _format_available_models_line(models: dict) -> str:
+    """One-liner summary for error messages: 'key: [a,b]  key2: []'"""
+    if not models:
+        return "(could not fetch object_info)"
+    parts = []
+    for k, v in models.items():
+        if isinstance(v, list):
+            preview = ", ".join(v[:8])
+            if len(v) > 8:
+                preview += f" (+{len(v)-8} more)"
+            parts.append(f"{k}: [{preview}]")
+        else:
+            parts.append(f"{k}: {v}")
+    return "  ".join(parts)
 
 
 def queue_workflow(workflow, client_id, comfy_org_api_key=None):
@@ -471,17 +516,19 @@ def queue_workflow(workflow, client_id, comfy_org_api_key=None):
             # Check if the error data itself contains validation info
             if error_data.get("type") == "prompt_outputs_failed_validation":
                 error_message = error_data.get("message", "Workflow validation failed")
-                # For this type of error, we need to parse the validation details from logs
-                # Since ComfyUI doesn't seem to include detailed validation errors in the response
-                # Let's provide a more helpful generic message
                 available_models = get_available_models()
-                if available_models.get("checkpoints"):
-                    error_message += f"\n\nThis usually means a required model or parameter is not available."
-                    error_message += f"\nAvailable checkpoint models: {', '.join(available_models['checkpoints'])}"
-                else:
-                    error_message += "\n\nThis usually means a required model or parameter is not available."
-                    error_message += "\nNo checkpoint models appear to be available. Please check your model installation."
-
+                error_message += "\n\nThis usually means a required model or parameter is not available."
+                error_message += f"\nAvailable models: {_format_available_models_line(available_models)}"
+                # GGUF-specific hint when both GGUF lists are empty
+                if not available_models.get("unet_name") and not available_models.get("clip_name"):
+                    error_message += (
+                        "\n\nEmpty unet_name/clip_name lists => GGUF models not discovered."
+                        "\nMost common cause: network volume NOT ATTACHED to this endpoint."
+                        "\nFix: RunPod Console → Serverless → your endpoint → Manage → Edit → Advanced → Network Volume → select 'qwen-fast-models' → Save."
+                        "\nAlso check: volume must be in the SAME region as the endpoint (CA/US-CA), and"
+                        "\nfiles must be exactly at /runpod-volume/models/text_encoders/*.gguf and /runpod-volume/models/diffusion_models/*.gguf"
+                        "\nSet NETWORK_VOLUME_DEBUG=true to get volume diagnostics in logs."
+                    )
                 raise ValueError(error_message)
 
             # If we have specific validation errors, format them nicely
@@ -490,16 +537,16 @@ def queue_workflow(workflow, client_id, comfy_org_api_key=None):
                     f"• {detail}" for detail in error_details
                 )
 
-                # Try to provide helpful suggestions for common errors
-                if any(
-                    "not in list" in detail and "ckpt_name" in detail
-                    for detail in error_details
-                ):
+                if any("not in list" in d for d in error_details):
                     available_models = get_available_models()
-                    if available_models.get("checkpoints"):
-                        detailed_message += f"\n\nAvailable checkpoint models: {', '.join(available_models['checkpoints'])}"
-                    else:
-                        detailed_message += "\n\nNo checkpoint models appear to be available. Please check your model installation."
+                    detailed_message += f"\n\nAvailable models: {_format_available_models_line(available_models)}"
+                    # Targeted hint when the failing field is a GGUF one
+                    if any("unet_name" in d or "clip_name" in d for d in error_details):
+                        if available_models.get("unet_name") == [] or available_models.get("clip_name") == []:
+                            detailed_message += (
+                                "\n\nHint: unet_name/clip_name list is empty => volume not attached or files not at /runpod-volume/models/{text_encoders,diffusion_models}/"
+                                "\nSet NETWORK_VOLUME_DEBUG=true for diagnostics."
+                            )
 
                 raise ValueError(detailed_message)
             else:
