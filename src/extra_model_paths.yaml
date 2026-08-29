@@ -1,5 +1,8 @@
 runpod_worker_comfy:
   base_path: /runpod-volume
+# POD compat — some Pod templates mount the network volume at /workspace, not /runpod-volume
+runpod_worker_comfy_workspace:
+  base_path: /workspace
   checkpoints: models/checkpoints/
   clip: models/clip/
   clip_vision: models/clip_vision/

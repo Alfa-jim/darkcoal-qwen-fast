@@ -60,46 +60,57 @@ echo "worker-comfyui: GPU available — $GPU_CHECK"
 comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-Manager network_mode" >&2
 
 # ── FAST: verify network volume + mount + extra paths before launching ──
-# In darkcoal-qwen-fast the 3 uncensored GGUFs are NOT baked; they live on /runpod-volume.
+# In darkcoal-qwen-fast the 3 uncensored GGUFs are NOT baked; they live on a network volume.
+# Serverless mounts at /runpod-volume, Pods often mount at /workspace — support both.
 if [ "${USE_NETWORK_VOLUME:-true}" = "true" ]; then
-  # 0) Is the volume actually attached? /runpod-volume missing => endpoint misconfigured.
-  if [ ! -d /runpod-volume ]; then
-    echo "worker-comfyui: FATAL — /runpod-volume does not exist (network volume NOT attached to this endpoint)." >&2
-    echo "worker-comfyui: Fix: RunPod Console → Serverless → your endpoint → Manage → Edit → Advanced → Network Volume → select qwen-fast-models → Save." >&2
-    echo "worker-comfyui: Continuing anyway so diagnostics still run, but every GGUF request will 400 until the volume is attached." >&2
-  elif ! mount 2>/dev/null | grep -q " /runpod-volume " && ! df /runpod-volume >/dev/null 2>&1; then
-    echo "worker-comfyui: WARNING — /runpod-volume exists but does not look like a mount (may be empty container dir)." >&2
-    echo "worker-comfyui: If this is a Pod, volume may be at /workspace instead — check df -h." >&2
-    df -h /runpod-volume 2>&1 | sed 's/^/worker-comfyui:   /' || true
+  # Detect volume base path — prefer /runpod-volume, fall back to /workspace for Pods
+  _VOL_BASE=""
+  if [ -f "/runpod-volume/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf" ] || [ -f "/runpod-volume/models/diffusion_models/qwen-rapid-nsfw-v5.3-Q6_K.gguf" ] || [ -d /runpod-volume ]; then
+    _VOL_BASE="/runpod-volume"
+  elif [ -f "/workspace/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf" ] || [ -f "/workspace/models/diffusion_models/qwen-rapid-nsfw-v5.3-Q6_K.gguf" ] || [ -d /workspace ]; then
+    _VOL_BASE="/workspace"
   fi
+  # 0) Is the volume actually attached?
+  if [ -z "$_VOL_BASE" ] || [ ! -d "$_VOL_BASE" ]; then
+    echo "worker-comfyui: FATAL — no network volume found at /runpod-volume or /workspace (volume NOT attached)." >&2
+    echo "worker-comfyui: Serverless: Attach at Advanced → Network Volume. Pod: set Mount Path to /runpod-volume." >&2
+    echo "worker-comfyui: Continuing anyway so diagnostics still run, but every GGUF request will 400 until the volume is attached." >&2
+  elif ! df "$_VOL_BASE" >/dev/null 2>&1; then
+    echo "worker-comfyui: WARNING — $_VOL_BASE exists but does not look like a mount (may be empty dir)." >&2
+    df -h 2>&1 | sed 's/^/worker-comfyui:   /' || true
+  else
+    echo "worker-comfyui: volume detected at $_VOL_BASE ($(df "$_VOL_BASE" | awk 'NR==2{print $1}'))" 2>&1 | sed 's/^/worker-comfyui:   /' || true
+  fi
+  # Fallback if still empty
+  [ -n "$_VOL_BASE" ] || _VOL_BASE="/runpod-volume"
 
   # 1) Check individual expected files — PHIL Rapid-AIO (v53) + abliterated
   MISSING=""
   for f in \
-    "/runpod-volume/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf" \
-    "/runpod-volume/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.mmproj-f16.gguf" \
-    "/runpod-volume/models/diffusion_models/qwen-rapid-nsfw-v5.3-Q6_K.gguf" \
-    "/runpod-volume/models/vae/qwen_image_vae.safetensors"
+    "$_VOL_BASE/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf" \
+    "$_VOL_BASE/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.mmproj-f16.gguf" \
+    "$_VOL_BASE/models/diffusion_models/qwen-rapid-nsfw-v5.3-Q6_K.gguf" \
+    "$_VOL_BASE/models/vae/qwen_image_vae.safetensors"
   do
     [ -f "$f" ] || MISSING="$MISSING $f"
   done
   if [ -n "$MISSING" ]; then
-    echo "worker-comfyui: FATAL — USE_NETWORK_VOLUME=true but missing on /runpod-volume:$MISSING" >&2
+    echo "worker-comfyui: FATAL — USE_NETWORK_VOLUME=true but missing on $_VOL_BASE:$MISSING" >&2
     echo "worker-comfyui: Attach the network volume with the PHIL Rapid-AIO GGUFs and retry." >&2
-    echo "worker-comfyui: The volume was set up with this exact layout — re-run this if Pod went cold:" >&2
-    echo 'worker-comfyui:   mkdir -p /runpod-volume/models/text_encoders /runpod-volume/models/diffusion_models /runpod-volume/models/vae /runpod-volume/models/loras' >&2
-    echo 'worker-comfyui:   curl -L -C - -o /runpod-volume/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf https://huggingface.co/Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-abliterated/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf' >&2
-    echo 'worker-comfyui:   curl -L -C - -o /runpod-volume/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.mmproj-f16.gguf https://huggingface.co/Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-abliterated/Qwen2.5-VL-7B-Instruct-abliterated.mmproj-f16.gguf' >&2
-    echo 'worker-comfyui:   curl -L -C - -o /runpod-volume/models/diffusion_models/qwen-rapid-nsfw-v5.3-Q6_K.gguf https://huggingface.co/Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF/resolve/main/v53/qwen-rapid-nsfw-v5.3-Q6_K.gguf' >&2
-    echo 'worker-comfyui:   curl -L -C - -o /runpod-volume/models/vae/qwen_image_vae.safetensors https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors' >&2
+    echo "worker-comfyui: The volume was set up with this exact layout — re-run this if Pod went cold (VOL=$_VOL_BASE):" >&2
+    echo "worker-comfyui:   mkdir -p \$_VOL_BASE/models/text_encoders \$_VOL_BASE/models/diffusion_models \$_VOL_BASE/models/vae \$_VOL_BASE/models/loras" >&2
+    echo "worker-comfyui:   curl -L -C - -o \$_VOL_BASE/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf https://huggingface.co/Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-abliterated/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf" >&2
+    echo "worker-comfyui:   curl -L -C - -o \$_VOL_BASE/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.mmproj-f16.gguf https://huggingface.co/Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF/resolve/main/Qwen2.5-VL-7B-Instruct-abliterated/Qwen2.5-VL-7B-Instruct-abliterated.mmproj-f16.gguf" >&2
+    echo "worker-comfyui:   curl -L -C - -o \$_VOL_BASE/models/diffusion_models/qwen-rapid-nsfw-v5.3-Q6_K.gguf https://huggingface.co/Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF/resolve/main/v53/qwen-rapid-nsfw-v5.3-Q6_K.gguf" >&2
+    echo "worker-comfyui:   curl -L -C - -o \$_VOL_BASE/models/vae/qwen_image_vae.safetensors https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors" >&2
     echo "worker-comfyui: See PLAN.md §3 or docs/network-volumes.md" >&2
     echo "worker-comfyui: Continuing anyway (ComfyUI will fail to find those models) ..." >&2
   else
-    echo "worker-comfyui: FAST volume check OK — PHIL Rapid-AIO GGUFs present on /runpod-volume"
-    ls -lh /runpod-volume/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf \
-           /runpod-volume/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.mmproj-f16.gguf \
-           /runpod-volume/models/diffusion_models/qwen-rapid-nsfw-v5.3-Q6_K.gguf \
-           /runpod-volume/models/vae/qwen_image_vae.safetensors  2>&1 | sed 's/^/worker-comfyui:   /'
+    echo "worker-comfyui: FAST volume check OK — PHIL Rapid-AIO GGUFs present on $_VOL_BASE"
+    ls -lh "$_VOL_BASE/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf" \
+           "$_VOL_BASE/models/text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.mmproj-f16.gguf" \
+           "$_VOL_BASE/models/diffusion_models/qwen-rapid-nsfw-v5.3-Q6_K.gguf" \
+           "$_VOL_BASE/models/vae/qwen_image_vae.safetensors"  2>&1 | sed 's/^/worker-comfyui:   /'
   fi
   # 1b) nodes_qwen patch check
   if grep -q "TextEncodeQwenImageEditPlus" /comfyui/comfy_extras/nodes_qwen.py 2>/dev/null; then
