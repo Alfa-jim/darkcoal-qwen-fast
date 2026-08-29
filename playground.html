@@ -100,21 +100,22 @@ hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 
     <h2>Sampler</h2>
     <div class="row">
-      <div><label>Steps</label><div class="range"><input id="steps" type="range" min="4" max="60" value="28"/><b id="steps_v">28</b></div></div>
-      <div><label>CFG</label><div class="range"><input id="cfg" type="range" min="1" max="12" step="0.5" value="6.5"/><b id="cfg_v">6.5</b></div></div>
+      <div><label>Steps</label><div class="range"><input id="steps" type="range" min="4" max="60" value="16"/><b id="steps_v">16</b></div></div>
+      <div><label>CFG</label><div class="range"><input id="cfg" type="range" min="1" max="12" step="0.5" value="1"/><b id="cfg_v">1</b></div></div>
     </div>
     <div class="row">
       <div><label>Sampler</label>
         <select id="sampler">
-          <option>euler_ancestral</option><option>euler</option><option>heun</option><option>dpmpp_2m</option><option>dpmpp_sde</option><option>dpmpp_2m_sde</option><option>dpm_2</option><option>lcm</option><option>uni_pc</option>
+          <option selected>euler</option><option>euler_ancestral</option><option>heun</option><option>dpmpp_2m</option><option>dpmpp_sde</option><option>dpmpp_2m_sde</option><option>dpm_2</option><option>lcm</option><option>uni_pc</option>
         </select>
       </div>
       <div><label>Scheduler</label>
         <select id="scheduler">
-          <option>normal</option><option>karras</option><option>exponential</option><option>simple</option><option>sgm_uniform</option><option>ddim_uniform</option>
+          <option>normal</option><option>karras</option><option>exponential</option><option selected>simple</option><option>sgm_uniform</option><option>ddim_uniform</option>
         </select>
       </div>
     </div>
+    <div class="small" style="margin-top:6px">Qwen (flow): <b>cfg 1.0 + euler + simple + 16 steps</b>. cfg 5 + ancestral = grain. <span id="samplerHint" style="color:var(--warn)"></span></div>
     <div id="denoiseWrap" class="hidden">
       <label>Denoise (img2img strength)</label>
       <div class="range"><input id="denoise" type="range" min="0.1" max="1" step="0.05" value="0.65"/><b id="denoise_v">0.65</b></div>
@@ -346,13 +347,14 @@ function useLastSeed(){ if(lastSeed!=null) $('seed').value=lastSeed; }
 function pastePrompt(){ navigator.clipboard.readText().then(t=> $('prompt').value=t).catch(()=>log('clipboard denied')); }
 
 function preset(k){
-  if(k==='nsfw'){ $('prompt').value='nsfw, nude anime girl with long blonde hair, blue eyes, massive fluffy fennec ears, big fluffy tail, highly detailed anime style, uncensored, detailed skin, lying on bed'; $('neg').value=' '; $('cfg').value=1.0; $('steps').value=20; $('sampler').value='euler'; $('scheduler').value='simple'; }
+  if(k==='nsfw'){ $('prompt').value='nsfw, nude anime girl with long blonde hair, blue eyes, massive fluffy fennec ears, big fluffy tail, highly detailed anime style, uncensored, detailed skin, lying on bed'; $('neg').value=' '; $('cfg').value=1.0; $('steps').value=16; $('sampler').value='euler'; $('scheduler').value='simple'; }
 
-  if(k==='anime'){ $('prompt').value='masterpiece, best quality, anime, 1girl, detailed face, soft lighting, intricate background'; $('neg').value='lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry'; $('steps').value=28; $('cfg').value=6.5; $('sampler').value='euler_ancestral'; $('scheduler').value='normal'; }
-  if(k==='photo'){ $('prompt').value='masterpiece, best quality, photo, 1girl, realistic skin, natural lighting, bokeh'; $('cfg').value=5; $('sampler').value='dpmpp_2m'; $('scheduler').value='karras'; }
-  if(k==='portrait'){ $('width').value=832; $('height').value=1216; $('steps').value=28; }
-  if(k==='landscape'){ $('width').value=1216; $('height').value=832; $('steps').value=28; }
+  if(k==='anime'){ $('prompt').value='masterpiece, best quality, anime, 1girl, detailed face, soft lighting, intricate background'; $('neg').value='lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry'; $('steps').value=16; $('cfg').value=1.0; $('sampler').value='euler'; $('scheduler').value='simple'; }
+  if(k==='photo'){ $('prompt').value='masterpiece, best quality, photo, 1girl, realistic skin, natural lighting, bokeh'; $('cfg').value=1.0; $('sampler').value='euler'; $('scheduler').value='simple'; $('steps').value=16; }
+  if(k==='portrait'){ $('width').value=832; $('height').value=1216; $('steps').value=16; }
+  if(k==='landscape'){ $('width').value=1216; $('height').value=832; $('steps').value=16; }
   ['steps','cfg'].forEach(id=>{ const v=$(id+'_v'); if(v) v.textContent=$(id).value; });
+  updateSamplerHint();
 }
 
 function syncEndpoint(){ epMode=$('epPath').value; $('epMode').textContent=epMode; }
@@ -596,12 +598,28 @@ function copyShareLink(){
   try{ const o=JSON.parse(decodeURIComponent(escape(atob(q)))); if(o.p) $('prompt').value=o.p; if(o.n) $('neg').value=o.n; if(o.w) $('width').value=o.w; if(o.h) $('height').value=o.h; if(o.s) $('steps').value=o.s; if(o.c) $('cfg').value=o.c; }catch{}
 })();
 
+function updateSamplerHint(){
+  const s=$('sampler').value, c=Number($('cfg').value), sch=$('scheduler').value;
+  const hint=$('samplerHint');
+  if (!hint) return;
+  if (c > 2 || s==='euler_ancestral' || (sch==='normal' && s!=='euler')){
+    hint.textContent = '⚠️ Qwen wants cfg 1.0 + euler + simple — higher cfg/ancestral = grain';
+  } else {
+    hint.textContent = '';
+  }
+}
+['sampler','scheduler','cfg'].forEach(id=>{
+  const el=$(id); if(el) el.addEventListener('change', updateSamplerHint);
+});
+$('cfg').addEventListener('input', updateSamplerHint);
+
 // wire initial
 setMode('txt2img');
 $('steps').dispatchEvent(new Event('input')); $('cfg').dispatchEvent(new Event('input'));
 $('hiresDenoise').addEventListener('input',()=> $('hiresDenoise_v').textContent=$('hiresDenoise').value);
+updateSamplerHint();
 buildWorkflow();
-log('ready — set endpoint + key, pick mode, generate. LoRAs need baked files in models/loras/.');
+log('ready — set endpoint + key, pick mode, generate. LoRAs need baked files in models/loras/. Qwen defaults: cfg 1.0 euler simple 16 steps.');
 </script>
 </body>
 </html>
