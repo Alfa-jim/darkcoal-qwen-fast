@@ -98,6 +98,17 @@ RUN uv pip install "gguf>=0.13.0" sentencepiece protobuf && \
     comfy-node-install ComfyUI-GGUF || (git clone https://github.com/city96/ComfyUI-GGUF /comfyui/custom_nodes/ComfyUI-GGUF && uv pip install -r /comfyui/custom_nodes/ComfyUI-GGUF/requirements.txt || true) && \
     ls -l /comfyui/custom_nodes/ComfyUI-GGUF/nodes.py && uv pip show gguf | head -5
 
+# Phr00t Rapid-AIO fixed Qwen node — replaces ComfyUI's broken TextEncodeQwenImageEdit scaling/crop + single-image limit
+# This adds TextEncodeQwenImageEditPlus (up to 4 images, latent-aware sizing). Required for Rapid.
+# Must land AFTER ComfyUI install so it overwrites /comfyui/comfy_extras/nodes_qwen.py last.
+RUN echo "=== patching comfy_extras/nodes_qwen.py -> Phr00t v2 ===" && \
+    cp /comfyui/comfy_extras/nodes_qwen.py /comfyui/comfy_extras/nodes_qwen.py.bak && \
+    curl -L --retry 5 --retry-delay 10 --retry-all-errors -o /comfyui/comfy_extras/nodes_qwen.py \
+      https://huggingface.co/Phr00t/Qwen-Image-Edit-Rapid-AIO/resolve/main/fixed-textencode-node/nodes_qwen.v2.py && \
+    echo "patched nodes_qwen.py:" && ls -lh /comfyui/comfy_extras/nodes_qwen.py /comfyui/comfy_extras/nodes_qwen.py.bak && \
+    grep -q "TextEncodeQwenImageEditPlus" /comfyui/comfy_extras/nodes_qwen.py && echo "Plus node OK" || (echo "FATAL: patched nodes_qwen.py missing TextEncodeQwenImageEditPlus"; exit 1) && \
+    grep -q "TextEncodeQwenImageEdit" /comfyui/comfy_extras/nodes_qwen.py && echo "Base node OK" || (echo "FATAL: patched nodes_qwen.py missing TextEncodeQwenImageEdit"; exit 1)
+
 # Support for the network volume — copy BEFORE smoke test so the yaml is validated at build time.
 WORKDIR /comfyui
 ADD src/extra_model_paths.yaml ./

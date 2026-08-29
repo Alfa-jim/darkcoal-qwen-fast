@@ -7,14 +7,14 @@
         "_meta": { "title": "Load VAE" }
       },
       "12": {
-        "inputs": { "unet_name": "qwen-image-edit-2511-uncensored-Q6_K.gguf" },
+        "inputs": { "unet_name": "qwen-rapid-nsfw-v5.3-Q6_K.gguf" },
         "class_type": "UnetLoaderGGUF",
-        "_meta": { "title": "Load Diffusion Model GGUF (uncensored)" }
+        "_meta": { "title": "Load Diffusion Model GGUF (Rapid-AIO v5.3 NSFW)" }
       },
       "61": {
-        "inputs": { "clip_name": "Qwen2.5-VL-7B-Instruct-q4_0.gguf", "type": "qwen_image", "device": "default" },
+        "inputs": { "clip_name": "Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf", "type": "qwen_image", "device": "default" },
         "class_type": "CLIPLoaderGGUF",
-        "_meta": { "title": "Load CLIP GGUF" }
+        "_meta": { "title": "Load CLIP GGUF (abliterated)" }
       },
       "66": {
         "inputs": { "shift": 3.1, "model": ["12", 0] },
@@ -22,7 +22,7 @@
         "_meta": { "title": "ModelSamplingAuraFlow" }
       },
       "6": {
-        "inputs": { "text": "nsfw, nude anime girl with long blonde hair, blue eyes, massive fluffy fennec ears, big fluffy tail, highly detailed anime style, uncensored", "clip": ["61", 0] },
+        "inputs": { "text": "nsfw, nude anime girl with long blonde hair, blue eyes, massive fluffy fennec ears, big fluffy tail, highly detailed anime style, uncensored, masterpiece", "clip": ["61", 0] },
         "class_type": "CLIPTextEncode",
         "_meta": { "title": "CLIP Text Encode (Positive)" }
       },
@@ -32,14 +32,14 @@
         "_meta": { "title": "CLIP Text Encode (Negative)" }
       },
       "27": {
-        "inputs": { "width": 1024, "height": 1024, "batch_size": 1 },
+        "inputs": { "width": 832, "height": 1216, "batch_size": 1 },
         "class_type": "EmptySD3LatentImage",
         "_meta": { "title": "EmptySD3LatentImage" }
       },
       "3": {
-        "inputs": { "seed": 42, "steps": 20, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0, "model": ["66", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["27", 0] },
+        "inputs": { "seed": 42, "steps": 4, "cfg": 1.0, "sampler_name": "euler_ancestral", "scheduler": "beta", "denoise": 1.0, "model": ["66", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["27", 0] },
         "class_type": "KSampler",
-        "_meta": { "title": "KSampler" }
+        "_meta": { "title": "KSampler (Rapid 4-step)" }
       },
       "8": { "inputs": { "samples": ["3", 0], "vae": ["10", 0] }, "class_type": "VAEDecode", "_meta": { "title": "VAE Decode" } },
       "9": { "inputs": { "filename_prefix": "ComfyUI", "images": ["8", 0] }, "class_type": "SaveImage", "_meta": { "title": "Save Image" } }
