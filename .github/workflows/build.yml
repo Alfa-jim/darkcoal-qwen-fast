@@ -3,6 +3,7 @@ name: Build and Push to GHCR (qwen-fast — network-volume)
 on:
   push:
     branches: [main, master]
+    tags: ["late2", "v*"]
   workflow_dispatch:
 
 jobs:
@@ -53,3 +54,4 @@ jobs:
           tags: |
             ghcr.io/${{ steps.owner.outputs.owner }}/darkcoal-qwen-fast:latest
             ghcr.io/${{ steps.owner.outputs.owner }}/darkcoal-qwen-fast:qwen-image-edit
+            ghcr.io/${{ steps.owner.outputs.owner }}/darkcoal-qwen-fast:late2
